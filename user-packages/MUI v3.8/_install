@@ -1,0 +1,111 @@
+; MUI v3.8
+; --------
+;
+; Date: 2019-10-25
+; Author: Henrik Noerfjand Stengaard
+;
+; User package for HstWB Installer to automate installation of MUI v3.8.
+; If MUI v3.8 or newer version is already installed, installation of MUI ends.
+
+
+; defaults
+set systemdir ""
+set muidir ""
+
+; skip to installmui, if "MUI:" device doesn't exist 
+Assign >NIL: EXISTS MUI:
+IF $RC EQ 0 VAL
+  set muidir "MUI:"
+ELSE
+  ; set system dir
+  set systemdir "`execute INSTALLDIR:S/CombinePath "$INSTALLDIR" "System"`"
+  set muidir "$systemdir/MUI"
+ENDIF
+
+; set default mui directory, if it's not installed
+IF "$muidir" EQ ""
+  set muidir "SYS:System/MUI"
+ENDIF
+
+; set muifile
+set muifile "`execute INSTALLDIR:S/CombinePath "$muidir" "MUI"`"
+
+; skip to installmui, if mui is not installed in "$muidir/MUI"
+IF EXISTS "$muifile"
+  ; skip to end, if muifile v3.8 or newer version is already installed
+  Version "$muifile" 19 14 >NIL:
+  IF $RC EQ 0 VAL
+    Echo "MUI v3.8 or newer version is already installed"
+    SKIP end
+  ENDIF
+ENDIF
+
+; create mui directory, if it doesn't exist
+IF NOT EXISTS "$muidir"
+  MakePath >NIL: "$muidir"
+ENDIF
+
+; write install status
+Echo "Install MUI..."
+
+; extract mui to temp systemdir
+lha -m1 -q x "USERPACKAGEDIR:mui38usr.lha" "SYSTEMDIR:Temp/_MUI/"
+
+; install mui files
+Copy >NIL: "SYSTEMDIR:Temp/_MUI/MUI/#?" "$muidir" CLONE ALL
+
+; install mui icon, if systemdir is defined
+IF NOT "$systemdir" EQ ""
+  Copy >NIL: "SYSTEMDIR:Temp/_MUI/MUI.info" "$systemdir" CLONE
+ENDIF
+
+; write install status
+Echo "Update 'User-Startup'..."
+
+; set user startup file
+set usfile "`execute INSTALLDIR:S/CombinePath "$INSTALLDIR" "S/User-Startup"`"
+
+; create user startup, if it doesn't exist
+IF NOT EXISTS "$usfile"
+  Echo NOLINE "" >"$usfile"
+ENDIF
+
+; update user startup file, if it doesn't contain "assign MUI:"
+search "$usfile" "assign" >T:_usassigns
+IF NOT $RC EQ 0 VAL
+  search T:_usassigns "MUI:" >NIL:
+  IF NOT $RC EQ 0 VAL
+
+  Echo "" >>"$usfile"
+  Echo "if exists *"$muidir*"" >>"$usfile"
+  Echo "  assign MUI: *"$muidir*"" >>"$usfile"
+  Echo "  if exists MUI:Libs" >>"$usfile"
+  Echo "    assign add LIBS: MUI:Libs" >>"$usfile"
+  Echo "  endif" >>"$usfile"
+  Echo "  if exists MUI:Locale" >>"$usfile"
+  Echo "    assign add LOCALE: MUI:Locale" >>"$usfile"
+  Echo "  endif" >>"$usfile"
+  Echo "  version >nil: exec.library 39" >>"$usfile"
+  Echo "  if not warn" >>"$usfile"
+  Echo "    if exists MUI:Docs" >>"$usfile"
+  Echo "      if exists HELP:dummy ; do not remove" >>"$usfile"
+  Echo "      endif                ; this entry!" >>"$usfile"
+  Echo "      assign add HELP: MUI:Docs" >>"$usfile"
+  Echo "    endif" >>"$usfile"
+  Echo "  endif" >>"$usfile"
+  Echo "endif" >>"$usfile"
+ENDIF
+
+; show reboot requester, if mui assign doesn't exist
+Assign >NIL: EXISTS MUI:
+IF NOT $RC EQ 0 VAL
+  RequestChoice "Reboot" "MUI needs Amiga OS to be rebooted.*NPlease reboot after installing user packages." "OK"
+ENDIF
+
+; delete mui from temp systemdir
+Delete >NIL: "SYSTEMDIR:Temp/_MUI" ALL
+
+
+; end
+; ---
+LAB end
